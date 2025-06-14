@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to set up Athena resources for querying Common Crawl data
+
+Resources:
+  AthenaQueryResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-athena-query-results'
+
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: common-crawl-workgroup
+      Description: Athena workgroup for Common Crawl queries
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${AthenaQueryResultsBucket}/results/'
+
+Outputs:
+  QueryResultsBucket:
+    Description: S3 bucket for Athena query results
+    Value: !Ref AthenaQueryResultsBucket
+  AthenaWorkGroupName:
+    Description: Athena workgroup name
+    Value: !Ref AthenaWorkGroup
