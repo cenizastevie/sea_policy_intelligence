@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to set up Athena resources for querying Common Crawl data
+
+Resources:
+  AthenaQueryResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-athena-query-results'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  SeaPolicyDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-sea-policy-data'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  AthenaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-athena-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: athena.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAthenaFullAccess
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - 'arn:aws:s3:::commoncrawl'
+                  - 'arn:aws:s3:::commoncrawl/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${AthenaQueryResultsBucket}'
+                  - !Sub 'arn:aws:s3:::${AthenaQueryResultsBucket}/*'
+                  - !Sub 'arn:aws:s3:::${SeaPolicyDataBucket}'
+                  - !Sub 'arn:aws:s3:::${SeaPolicyDataBucket}/*'
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:CreateTable
+                  - glue:UpdateTable
+                  - glue:DeleteTable
+                Resource: '*'
+
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: sea_policy_intelligence
+        Description: Database for SEA Policy Intelligence project
+
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: common-crawl-workgroup
+      Description: Athena workgroup for Common Crawl queries
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${AthenaQueryResultsBucket}/results/'
+
+Outputs:
+  QueryResultsBucket:
+    Description: S3 bucket for Athena query results
+    Value: !Ref AthenaQueryResultsBucket
+  SeaPolicyDataBucket:
+    Description: S3 bucket for processed SEA policy data
+    Value: !Ref SeaPolicyDataBucket
+  AthenaWorkGroupName:
+    Description: Athena workgroup name
+    Value: !Ref AthenaWorkGroup
+  GlueDatabaseName:
+    Description: Glue database name
+    Value: !Ref GlueDatabase
+  AthenaExecutionRoleArn:
+    Description: ARN of the Athena execution role
+    Value: !GetAtt AthenaExecutionRole.Arn
