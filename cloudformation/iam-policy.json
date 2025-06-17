@@ -1,0 +1,92 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "glue:CreateDatabase",
+                "glue:DeleteDatabase",
+                "glue:GetDatabase",
+                "glue:GetDatabases",
+                "glue:UpdateDatabase",
+                "glue:CreateTable",
+                "glue:DeleteTable",
+                "glue:GetTable",
+                "glue:GetTables",
+                "glue:UpdateTable",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:CreatePartition",
+                "glue:DeletePartition",
+                "glue:UpdatePartition",
+                "glue:BatchCreatePartition",
+                "glue:BatchDeletePartition",
+                "glue:BatchGetPartition",
+                "glue:GetCatalogImportStatus",
+                "glue:ImportCatalogToGlue"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "athena:BatchGetQueryExecution",
+                "athena:CancelQueryExecution",
+                "athena:CreateWorkGroup",
+                "athena:DeleteWorkGroup",
+                "athena:GetQueryExecution",
+                "athena:GetQueryResults",
+                "athena:GetWorkGroup",
+                "athena:ListQueryExecutions",
+                "athena:ListWorkGroups",
+                "athena:StartQueryExecution",
+                "athena:StopQueryExecution",
+                "athena:UpdateWorkGroup",
+                "athena:GetDatabase",
+                "athena:GetDataCatalog",
+                "athena:GetTableMetadata",
+                "athena:ListDatabases",
+                "athena:ListDataCatalogs",
+                "athena:ListTableMetadata",
+                "athena:CreateDataCatalog",
+                "athena:DeleteDataCatalog",
+                "athena:UpdateDataCatalog"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:ListBucketMultipartUploads",
+                "s3:ListMultipartUploadParts",
+                "s3:AbortMultipartUpload",
+                "s3:CreateBucket",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:PutBucketPublicAccessBlock",
+                "s3:GetBucketPublicAccessBlock"
+            ],
+            "Resource": [
+                "arn:aws:s3:::*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:GetRole",
+                "iam:PassRole",
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:DeleteRolePolicy",
+                "iam:GetRolePolicy"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
