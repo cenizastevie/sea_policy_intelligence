@@ -1,2 +1,3 @@
 large_files/*
 ec2_python_scripts/warc_file_extractor_script/output/*
+ec2_python_scripts/warc_file_extractor_script/__pycache__/*

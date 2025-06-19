@@ -20,7 +20,7 @@
    ```
 4. (Optional) To update the stack in the future:
    ```cmd
-   aws cloudformation update-stack --stack-name <your-stack-name> --template-body file://cloudformation/common-crawl-ingestion.yaml
+   aws cloudformation update-stack --stack-name common-crawl-ingestion --template-body file://cloudformation/common-crawl-ingestion.yaml
    ```
 5. (Optional) To delete the stack and all resources:
    ```cmd
