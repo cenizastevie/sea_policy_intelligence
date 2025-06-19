@@ -1,6 +1,6 @@
 SELECT
   CONCAT('s3://commoncrawl/', warc_filename) AS wet_file_s3_path,
-  COUNT(*) AS url_count
+  url
 FROM commoncrawl_cdx
 WHERE
   crawl LIKE 'CC-MAIN-2021-%'
@@ -76,5 +76,4 @@ WHERE
     url LIKE '%coverage%' OR url LIKE '%access%' OR url LIKE '%availability%' OR url LIKE '%affordability%' OR
     url LIKE '%insurance%' OR url LIKE '%copay%' OR url LIKE '%subsidy%' OR url LIKE '%assistance%' OR url LIKE '%support%'
   )
-GROUP BY warc_filename
-ORDER BY url_count DESC
+ORDER BY warc_filename, url
