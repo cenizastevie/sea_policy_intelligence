@@ -1,3 +1,32 @@
+# Deploying the S3 Bucket (sea-news-articles) with CloudFormation
+
+## Prerequisites
+- AWS CLI installed and configured with appropriate permissions
+- This template file saved locally (e.g., common-crawl-ingestion.yaml)
+
+## Deployment Steps
+
+1. Validate the template (optional but recommended):
+   ```cmd
+   aws cloudformation validate-template --template-body file://cloudformation/common-crawl-ingestion.yaml
+   ```
+2. Create the stack (replace <your-stack-name> with your desired stack name):
+   ```cmd
+   aws cloudformation create-stack --stack-name common-crawl-ingestion --template-body file://cloudformation/common-crawl-ingestion.yaml --capabilities CAPABILITY_NAMED_IAM --region us-east-1
+   ```
+3. Wait for the stack to finish creating:
+   ```cmd
+   aws cloudformation describe-stacks --stack-name <your-stack-name>
+   ```
+4. (Optional) To update the stack in the future:
+   ```cmd
+   aws cloudformation update-stack --stack-name <your-stack-name> --template-body file://cloudformation/common-crawl-ingestion.yaml
+   ```
+5. (Optional) To delete the stack and all resources:
+   ```cmd
+   aws cloudformation delete-stack --stack-name <your-stack-name>
+   ```
+
 # CloudFormation Stack Deployment Instructions
 
 ## Prerequisites

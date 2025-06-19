@@ -5,6 +5,9 @@ from warcio.archiveiterator import ArchiveIterator
 from newspaper import Article
 from bs4 import BeautifulSoup
 import re
+import os
+import boto3
+s3 = boto3.client('s3')
 # Load allowed domains from CSV
 allowed_domains = set()
 with open('domains.csv', newline='', encoding='utf-8') as csvfile:
@@ -14,6 +17,7 @@ with open('domains.csv', newline='', encoding='utf-8') as csvfile:
 
 output_dir = 'output'
 os.makedirs(output_dir, exist_ok=True)
+output_bucket = os.environ.get('OUTPUT_BUCKET', 'sea-news-articles')
 def sanitize_filename(url):
     parsed = urlparse(url)
     path = parsed.path + (('_' + parsed.query) if parsed.query else '')
@@ -63,7 +67,9 @@ with open('../../large_files/test.gz', 'rb') as stream:
         safe_domain = domain.replace('.', '_')
         filename = sanitize_filename(url)
         filepath = os.path.join(output_dir, filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f'URL: {url}\nDomain: {domain}\nTitle: {title}\n\n{article_text}\n')
-        count += 1
-        print(f'Saved: {filepath}')
+        # with open(filepath, 'w', encoding='utf-8') as f:
+        #     f.write(f'URL: {url}\nDomain: {domain}\nTitle: {title}\n\n{article_text}\n')
+        # count += 1
+        # print(f'Saved: {filepath}')
+        s3_key = f'{safe_domain}/{filename}'
+        s3.put_object(Bucket=output_bucket, Key=s3_key, Body=f'URL: {url}\nDomain: {domain}\nTitle: {title}\n\n{article_text}\n'.encode('utf-8'))
