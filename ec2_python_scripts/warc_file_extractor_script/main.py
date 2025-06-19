@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from warcio.archiveiterator import ArchiveIterator
 from newspaper import Article
 from bs4 import BeautifulSoup
-
+import re
 # Load allowed domains from CSV
 allowed_domains = set()
 with open('domains.csv', newline='', encoding='utf-8') as csvfile:
@@ -14,6 +14,17 @@ with open('domains.csv', newline='', encoding='utf-8') as csvfile:
 
 output_dir = 'output'
 os.makedirs(output_dir, exist_ok=True)
+def sanitize_filename(url):
+    parsed = urlparse(url)
+    path = parsed.path + (('_' + parsed.query) if parsed.query else '')
+    if not path or path == '/':
+        path = 'root'
+    safe_path = re.sub(r'[^a-zA-Z0-9]', '_', path)
+    if safe_path[0] == '_':
+        safe_path = safe_path[1:]
+    if safe_path.endswith('_'):
+        safe_path = safe_path[:-1]
+    return f'{safe_path}.txt'
 
 with open('../../large_files/test.gz', 'rb') as stream:
     count = 0
@@ -43,17 +54,14 @@ with open('../../large_files/test.gz', 'rb') as stream:
         except Exception as e:
             title = ''
             article_text = ''
-        # Fallback: if article_text is empty or very short, use BeautifulSoup to get all visible text
         if not article_text or len(article_text.strip()) < 500:
             soup = BeautifulSoup(html, 'html.parser')
-            # Remove script and style elements
             for script in soup(['script', 'style']):
                 script.decompose()
             all_text = soup.get_text(separator=' ', strip=True)
             article_text = all_text
-        # Save to .txt file
         safe_domain = domain.replace('.', '_')
-        filename = f'{idx+1}_{safe_domain}.txt'
+        filename = sanitize_filename(url)
         filepath = os.path.join(output_dir, filename)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(f'URL: {url}\nDomain: {domain}\nTitle: {title}\n\n{article_text}\n')
