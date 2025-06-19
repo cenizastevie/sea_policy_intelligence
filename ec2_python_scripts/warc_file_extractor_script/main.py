@@ -79,6 +79,6 @@ if __name__ == '__main__':
 
     for warc_file in warc_files:
         print(f'Processing WARC file: {warc_file}')
-        warc_stream = get_warc_file_stream(warc_file)
-        process_warc_stream(warc_stream)
+        with get_warc_file_stream(warc_file) as warc_stream:
+            process_warc_stream(warc_stream)
         print(f'Finished processing WARC file: {warc_file}')
