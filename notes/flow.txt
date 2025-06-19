@@ -1,0 +1,30 @@
+# Policy Solution Search & Summarization Flow
+
+1. Extract and Clean Article Texts
+   - Collect article texts from WET files for target domains and 2021.
+   - Clean and preprocess the text (remove HTML, normalize whitespace, etc.).
+
+2. Summarize Each Article
+   - Use an NLP summarization tool (extractive or abstractive) to generate a concise summary for each article.
+
+3. Generate Embeddings for Semantic Search
+   - Use a sentence embedding model (e.g., SBERT) to convert each summary into a vector.
+
+4. Build a Semantic Search Index
+   - Index all summary embeddings for fast similarity search.
+
+5. User Query Workflow
+   - User enters a keyword or phrase (e.g., "lockdown").
+   - Convert the query to an embedding.
+   - Retrieve the most semantically similar article summaries from the index.
+   - Display summaries and highlight outcome-related sentences (e.g., mentions of effectiveness, success, or failure).
+
+6. (Optional) Keyword Frequency & Context Extraction
+   - Provide a word frequency index for general overview.
+   - Allow users to view context sentences for specific keywords if needed.
+
+7. Transform Data into Outcomes
+   - Identify and extract sentences describing policy results (e.g., "lockdown reduced cases").
+   - Aggregate and count outcome mentions by policy, country, or time period.
+   - Summarize and visualize which measures were most often associated with positive or negative outcomes.
+   - Report findings to inform policy decisions or further research.
