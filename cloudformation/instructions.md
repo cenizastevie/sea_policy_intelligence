@@ -104,3 +104,13 @@ aws cloudformation delete-stack --stack-name sea-policy-intelligence --region us
 ```
 
 **Note:** You may need to empty the S3 buckets before deletion if they contain objects.
+
+## Deploying batch-processing-resources.yaml as sea-batch-ingestion
+
+To deploy the batch-processing-resources.yaml CloudFormation stack as sea-batch-ingestion, use the AWS CLI:
+
+```
+aws cloudformation deploy --stack-name sea-batch-ingestion --template-file cloudformation/batch-processing-resources.yaml --capabilities CAPABILITY_NAMED_IAM
+```
+
+This will create or update the stack named sea-batch-ingestion using the provided template. Ensure your AWS CLI is configured with the correct credentials and region.

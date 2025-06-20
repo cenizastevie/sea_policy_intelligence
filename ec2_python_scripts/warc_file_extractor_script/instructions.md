@@ -10,7 +10,7 @@
 Replace <aws_account_id> and <region> with your values:
 
 ```
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 211626350366.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region us-east-1 --profile iot-profile | docker login --username AWS --password-stdin 211626350366.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 ## 2. Build the Docker image

@@ -1,0 +1,258 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template for Sea Batch Processing (Non-S3 Resources)
+
+Resources:
+  SeaBatchVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.10.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  SeaBatchSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SeaBatchVPC
+      CidrBlock: 10.10.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-subnet-1"
+
+  SeaBatchSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SeaBatchVPC
+      CidrBlock: 10.10.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-subnet-2"
+
+  SeaBatchIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  SeaBatchAttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref SeaBatchVPC
+      InternetGatewayId: !Ref SeaBatchIGW
+
+  SeaBatchRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref SeaBatchVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-rtb"
+
+  SeaBatchRoute:
+    Type: AWS::EC2::Route
+    DependsOn: SeaBatchAttachIGW
+    Properties:
+      RouteTableId: !Ref SeaBatchRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref SeaBatchIGW
+
+  SeaBatchSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SeaBatchSubnet1
+      RouteTableId: !Ref SeaBatchRouteTable
+
+  SeaBatchSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SeaBatchSubnet2
+      RouteTableId: !Ref SeaBatchRouteTable
+
+  BatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for AWS Batch compute environment
+      VpcId: !Ref SeaBatchVPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [batch.amazonaws.com]
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+
+  BatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles: [!Ref BatchExecutionRole]
+
+  SpotFleetTaggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: spotfleet.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole
+      RoleName: aws-ec2-spot-fleet-tagging-role
+
+  BatchComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      ComputeResources:
+        Type: SPOT
+        MinvCpus: 0
+        MaxvCpus: 2
+        DesiredvCpus: 1
+        InstanceTypes: [t3.medium]
+        Subnets:
+          - !Ref SeaBatchSubnet1
+          - !Ref SeaBatchSubnet2
+        SecurityGroupIds:
+          - !Ref BatchSecurityGroup
+        InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        SpotIamFleetRole: !GetAtt SpotFleetTaggingRole.Arn
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+
+  BatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref BatchComputeEnvironment
+      Priority: 1
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      ContainerProperties:
+        Image: !ImportValue BatchTaskECRRepositoryURI
+        Vcpus: 2
+        Memory: 4096
+        Command: ["python", "main.py"]
+        Environment:
+          - Name: OUTPUT_BUCKET
+            Value: sea-news-articles
+          - Name: INPUT_BUCKET
+            Value: sea-warc-input
+          - Name: IS_LOCAL
+            Value: "false"
+        JobRoleArn: !GetAtt BatchExecutionRole.Arn
+      RetryStrategy:
+        Attempts: 2
+
+  BatchSubmitterLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSBatchFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+  BatchSubmitterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt BatchSubmitterLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 900
+      MemorySize: 256
+      Environment:
+        Variables:
+          INPUT_BUCKET: sea-warc-input
+          JOB_QUEUE: !Ref BatchJobQueue
+          JOB_DEFINITION: !Ref BatchJobDefinition
+          OUTPUT_BUCKET: sea-news-articles
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              batch = boto3.client('batch')
+              input_bucket = os.environ['INPUT_BUCKET']
+              job_queue = os.environ['JOB_QUEUE']
+              job_definition = os.environ['JOB_DEFINITION']
+
+              paginator = s3.get_paginator('list_objects_v2')
+              for page in paginator.paginate(Bucket=input_bucket):
+                  for obj in page.get('Contents', []):
+                      key = obj['Key']
+                      if not key.endswith('.csv'):
+                          continue
+                      manifest_uri = f's3://{input_bucket}/{key}'
+                      response = batch.submit_job(
+                          jobName=f"process-{key.replace('.csv','')}",
+                          jobQueue=job_queue,
+                          jobDefinition=job_definition,
+                          containerOverrides={
+                              'environment': [
+                                  {'name': 'BATCH_FILE_MANIFEST', 'value': key},
+                                  {'name': 'OUTPUT_BUCKET', 'value': os.environ['OUTPUT_BUCKET']},
+                                  {'name': 'INPUT_BUCKET', 'value': os.environ['INPUT_BUCKET']},
+                                  {'name': 'IS_LOCAL', 'value': 'false'}
+                              ]
+                          }
+                      )
+              return {"status": "completed"}
+
+Outputs:
+  BatchJobQueue:
+    Description: "The ARN of the Batch job queue"
+    Value: !Ref BatchJobQueue
+  BatchJobDefinition:
+    Description: "The ARN of the Batch job definition"
+    Value: !Ref BatchJobDefinition
