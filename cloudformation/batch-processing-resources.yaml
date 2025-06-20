@@ -147,7 +147,7 @@ Resources:
         MinvCpus: 0
         MaxvCpus: 2
         DesiredvCpus: 1
-        InstanceTypes: [t3.medium]
+        InstanceTypes: [m5.large]
         Subnets:
           - !Ref SeaBatchSubnet1
           - !Ref SeaBatchSubnet2
