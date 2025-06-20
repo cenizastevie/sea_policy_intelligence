@@ -147,7 +147,7 @@ Resources:
         MinvCpus: 0
         MaxvCpus: 2
         DesiredvCpus: 1
-        InstanceTypes: [m5.large, m5.xlarge, c5.large, c5.xlarge]
+        InstanceTypes: [x2idn.32xlarge, x2idn.metal]
         Subnets:
           - !Ref SeaBatchSubnet1
           - !Ref SeaBatchSubnet2
@@ -354,9 +354,42 @@ Resources:
                               'environment': [
                                   {'name': 'BATCH_FILE_MANIFEST', 'value': key},
                                   {'name': 'OUTPUT_BUCKET', 'value': os.environ['OUTPUT_BUCKET']},
-                                  {'name': 'INPUT_BUCKET', 'value': os.environ['INPUT_BUCKET']},
+                                  {'name': 'INPUT_BUCKET', 'value: os.environ['INPUT_BUCKET']},
                                   {'name': 'IS_LOCAL', 'value': 'false'}
                               ]
                           }
                       )
               return {"status": "completed"}
+
+  # OneOffTestLambdaRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: [lambda.amazonaws.com]
+  #           Action: sts:AssumeRole
+  #     Path: "/"
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  #       - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+  #       - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+
+  # LambdaContainerFunction:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     PackageType: Image
+  #     Role: !GetAtt OneOffTestLambdaRole.Arn
+  #     Code:
+  #       ImageUri: !ImportValue BatchTaskECRRepositoryURI
+  #     MemorySize: 256
+  #     Timeout: 900
+  #     Environment:
+  #       Variables:
+  #         BATCH_FILE_MANIFEST: batch_file_manifest_test.csv
+  #         OUTPUT_BUCKET: sea-news-articles
+  #         INPUT_BUCKET: sea-warc-input
+  #         IS_LOCAL: 'false'

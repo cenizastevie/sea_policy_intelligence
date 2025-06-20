@@ -5,7 +5,7 @@ from typing import BinaryIO
 s3 = boto3.client('s3')
 output_bucket = os.environ.get('OUTPUT_BUCKET', 'sea-news-articles')
 input_bucket = os.environ.get('INPUT_BUCKET', 'sea-warc-input')
-is_local = os.environ.get('IS_LOCAL', 'true').lower() == 'true'
+is_local = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
 
 def upload_file(file_path: str, key: str):
     """Upload a local file to S3."""

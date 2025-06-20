@@ -21,6 +21,9 @@ def sanitize_filename(url):
         safe_path = safe_path[:-1]
     return f'{safe_path}.txt'
 
+def to_ascii(s):
+    return s.encode('ascii', errors='ignore').decode('ascii')
+
 def process_warc_stream(stream):
     count = 0
     for idx, record in enumerate(ArchiveIterator(stream)):
@@ -57,28 +60,55 @@ def process_warc_stream(stream):
             article_text = all_text
         safe_domain = domain.replace('.', '_')
         filename = sanitize_filename(url)
+        safe_title = to_ascii(title)
+        safe_url = to_ascii(url)
         s3_key = f'{safe_domain}/{filename}'
+        print(f'Processing URL: {url}, Domain: {domain}, Title: {title}, S3 Key: {s3_key}')
         upload_bytes(
-            f'URL: {url}\nDomain: {domain}\nTitle: {title}\n\n{article_text}\n'.encode('utf-8'),
+            f'{article_text}'.encode('utf-8'),
             s3_key,
-            url,
-            title
+            safe_url,
+            safe_title
         )
 
 if __name__ == '__main__':
-    batch_file_manifest = os.environ.get('BATCH_FILE_MANIFEST', 'batch_file_manifest_test.csv')
-    batch_csv_stream = get_input_file_stream(batch_file_manifest)
-    batch_csv_reader = csv.DictReader(batch_csv_stream.read().decode('utf-8').splitlines())
-    warc_files = [row['wet_file_s3_path'].strip() for row in batch_csv_reader]
+    # # batch_file_manifest = os.environ.get('BATCH_FILE_MANIFEST', 'batch_file_manifest_test.csv')
+    # # batch_csv_stream = get_input_file_stream(batch_file_manifest)
+    # batch_csv_reader = csv.DictReader(batch_csv_stream.read().decode('utf-8').splitlines())
+    # warc_files = [row['wet_file_s3_path'].strip() for row in batch_csv_reader]
 
     allowed_domains = set()
     with open('domains.csv', newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             allowed_domains.add(row['domain'].strip())
+    warc_files = []
+    with open('warc_files.csv', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            warc_files.append(row['wet_file_s3_path'].strip())
 
     for warc_file in warc_files:
         print(f'Processing WARC file: {warc_file}')
         with get_warc_file_stream(warc_file) as warc_stream:
             process_warc_stream(warc_stream)
         print(f'Finished processing WARC file: {warc_file}')
+
+# def handler(event, context):
+#     batch_file_manifest = os.environ.get('BATCH_FILE_MANIFEST', 'batch_file_manifest_test.csv')
+#     batch_csv_stream = get_input_file_stream(batch_file_manifest)
+#     batch_csv_reader = csv.DictReader(batch_csv_stream.read().decode('utf-8').splitlines())
+#     warc_files = [row['wet_file_s3_path'].strip() for row in batch_csv_reader]
+
+#     allowed_domains = set()
+#     with open('domains.csv', newline='', encoding='utf-8') as csvfile:
+#         reader = csv.DictReader(csvfile)
+#         for row in reader:
+#             allowed_domains.add(row['domain'].strip())
+
+#     for warc_file in warc_files:
+#         print(f'Processing WARC file: {warc_file}')
+#         with get_warc_file_stream(warc_file) as warc_stream:
+#             process_warc_stream(warc_stream)
+#         print(f'Finished processing WARC file: {warc_file}')
+#     return {"status": "completed"}
