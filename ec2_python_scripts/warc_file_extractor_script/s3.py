@@ -5,15 +5,34 @@ from typing import BinaryIO
 s3 = boto3.client('s3')
 output_bucket = os.environ.get('OUTPUT_BUCKET', 'sea-news-articles')
 input_bucket = os.environ.get('INPUT_BUCKET', 'sea-warc-input')
-is_local = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
-
+is_local = os.environ.get('IS_LOCAL', 'true').lower() == 'true'
+print(f'Running in {"local" if is_local else "remote"} mode')
 def upload_file(file_path: str, key: str):
     """Upload a local file to S3."""
     s3.upload_file(file_path, output_bucket, key)
 
-def upload_bytes(data: bytes, key: str, url: str, title: str = 'title'):
+def upload_bytes(data: bytes, 
+                 key: str, url: str, 
+                 title: str = 'title', 
+                 language: str = 'en', 
+                 domain: str = 'domain',
+                 warc_file: str = 'warc_file',
+                 scrape_date: str = 'unknown', 
+    ):
     """Upload bytes data to S3 as an object."""
-    s3.put_object(Bucket=output_bucket, Key=key, Body=data, Metadata={'url': url, 'title': title})
+    s3.put_object(
+        Bucket=output_bucket, 
+        Key=key, 
+        Body=data, 
+        Metadata={
+            'url': url, 
+            'title': title, 
+            'language': language, 
+            'domain': domain,
+            'warc_file': warc_file,
+            'scrape_date': scrape_date
+        }
+    )
 
 def get_file_stream(bucket: str, key: str) -> BinaryIO:
     """Return a file-like stream for an S3 object."""

@@ -8,6 +8,7 @@ import re
 import os
 import boto3
 from s3 import upload_bytes, get_input_file_stream, get_warc_file_stream
+from langdetect import detect
 
 def sanitize_filename(url):
     parsed = urlparse(url)
@@ -24,9 +25,13 @@ def sanitize_filename(url):
 def to_ascii(s):
     return s.encode('ascii', errors='ignore').decode('ascii')
 
-def process_warc_stream(stream):
+def process_warc_stream(stream, warc_file):
     count = 0
     for idx, record in enumerate(ArchiveIterator(stream)):
+        # if record.rec_type == 'metadata':
+        #     scrape_date = record.rec_headers.get_header('WARC-Date')
+        #     print(f"Scrape date for URL {url}: {scrape_date}")
+        #     continue
         if record.rec_type != 'response':
             continue
         url = record.rec_headers.get_header('WARC-Target-URI')
@@ -38,6 +43,8 @@ def process_warc_stream(stream):
         if domain not in allowed_domains:
             continue
         payload = record.content_stream().read()
+        scrape_date = record.rec_headers.get_header('WARC-Date')
+        # print(f"Scrape date for URL {url}: {scrape_date}")
         try:
             html = payload.decode('utf-8', errors='replace')
         except Exception as e:
@@ -58,17 +65,29 @@ def process_warc_stream(stream):
                 script.decompose()
             all_text = soup.get_text(separator=' ', strip=True)
             article_text = all_text
+        # Detect language
+        try:
+            lang = detect(article_text)
+        except Exception:
+            lang = 'unknown'
+        # if lang != 'en':
+        #     print(f"Skipping non-English article (detected: {lang}) for URL: {url}")
+        #     continue
         safe_domain = domain.replace('.', '_')
         filename = sanitize_filename(url)
         safe_title = to_ascii(title)
         safe_url = to_ascii(url)
         s3_key = f'{safe_domain}/{filename}'
-        print(f'Processing URL: {url}, Domain: {domain}, Title: {title}, S3 Key: {s3_key}')
+        # print(f'Processing URL: {url}, Domain: {domain}, Title: {title}, S3 Key: {s3_key}')
         upload_bytes(
             f'{article_text}'.encode('utf-8'),
             s3_key,
             safe_url,
-            safe_title
+            safe_title,
+            lang,
+            safe_domain,
+            os.path.basename(warc_file),
+            scrape_date
         )
 
 if __name__ == '__main__':
@@ -91,7 +110,7 @@ if __name__ == '__main__':
     for warc_file in warc_files:
         print(f'Processing WARC file: {warc_file}')
         with get_warc_file_stream(warc_file) as warc_stream:
-            process_warc_stream(warc_stream)
+            process_warc_stream(warc_stream, warc_file)
         print(f'Finished processing WARC file: {warc_file}')
 
 # def handler(event, context):
