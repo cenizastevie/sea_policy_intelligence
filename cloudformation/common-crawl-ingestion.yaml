@@ -14,6 +14,11 @@ Resources:
     Properties:
       RepositoryName: sea-batch-task-repo
 
+  ArticlesJsonLBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: sea-articles-jsonl
 Outputs:
   SeaNewsArticlesBucket:
     Description: "The name of the bucket for storing news articles"
@@ -35,3 +40,8 @@ Outputs:
     Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${BatchTaskECRRepository}:latest"
     Export:
       Name: BatchTaskECRRepositoryURI
+  ArticlesJsonLBucket:
+    Description: "The name of the bucket for storing articles in JSONL format"
+    Value: !Ref ArticlesJsonLBucket
+    Export:
+      Name: ArticlesJsonLBucket

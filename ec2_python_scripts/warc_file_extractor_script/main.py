@@ -44,12 +44,13 @@ def process_warc_stream(stream, warc_file):
             continue
         payload = record.content_stream().read()
         scrape_date = record.rec_headers.get_header('WARC-Date')
-        # print(f"Scrape date for URL {url}: {scrape_date}")
+
         try:
             html = payload.decode('utf-8', errors='replace')
         except Exception as e:
             html = ''
-        # Use newspaper3k to extract article
+            
+
         article = Article(url)
         article.set_html(html)
         try:
