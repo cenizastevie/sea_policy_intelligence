@@ -76,20 +76,30 @@ def process_warc_stream(stream, warc_file):
         #     continue
         safe_domain = domain.replace('.', '_')
         filename = sanitize_filename(url)
+        # Limit filename length to avoid S3 key too long error (e.g., 100 chars)
+        max_filename_length = 100
+        if len(filename) > max_filename_length:
+            filename = filename[:max_filename_length]
         safe_title = to_ascii(title)
         safe_url = to_ascii(url)
         s3_key = f'{safe_domain}/{filename}'
-        # print(f'Processing URL: {url}, Domain: {domain}, Title: {title}, S3 Key: {s3_key}')
-        upload_bytes(
-            f'{article_text}'.encode('utf-8'),
-            s3_key,
-            safe_url,
-            safe_title,
-            lang,
-            safe_domain,
-            os.path.basename(warc_file),
-            scrape_date
-        )
+        # Limit total key length (S3 max is 1024 bytes, but keep it much shorter)
+        max_key_length = 200
+        if len(s3_key) > max_key_length:
+            s3_key = s3_key[:max_key_length]
+        try:
+            upload_bytes(
+                f'{article_text}'.encode('utf-8'),
+                s3_key,
+                safe_url,
+                safe_title,
+                lang,
+                safe_domain,
+                os.path.basename(warc_file),
+                scrape_date
+            )
+        except Exception as e:
+            print(f"Error uploading to S3 (key={s3_key}): {e}")
 
 if __name__ == '__main__':
     # # batch_file_manifest = os.environ.get('BATCH_FILE_MANIFEST', 'batch_file_manifest_test.csv')
