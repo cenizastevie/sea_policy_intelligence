@@ -1,0 +1,387 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Bedrock embeddings and OpenSearch Service'
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: sea-policy-intelligence
+  
+  OpenSearchInstanceType:
+    Description: OpenSearch instance type for the free tier
+    Type: String
+    Default: t3.small.elasticsearch
+    AllowedValues:
+      - t3.small.elasticsearch
+      - t3.medium.elasticsearch
+
+Resources:
+  # IAM Role for Lambda function
+  BedrockLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-bedrock-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: 
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v1'
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2'
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/cohere.embed-*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub 
+                    - 'arn:aws:s3:::${BucketName}'
+                    - BucketName: !ImportValue ArticlesVectorBucket
+                  - !Sub 
+                    - 'arn:aws:s3:::${BucketName}/*'
+                    - BucketName: !ImportValue ArticlesVectorBucket
+        - PolicyName: OpenSearchAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - es:ESHttpGet
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                  - es:ESHttpDelete
+                  - es:ESHttpHead
+                Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${EnvironmentName}-es/*'
+
+  # Lambda function for Bedrock embeddings
+  BedrockEmbeddingsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${EnvironmentName}-bedrock-embeddings'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt BedrockLambdaRole.Arn
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          OPENSEARCH_ENDPOINT: !GetAtt OpenSearchDomain.DomainEndpoint
+          EMBEDDINGS_BUCKET: !ImportValue ArticlesVectorBucket
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import urllib3
+          import urllib.request
+          import urllib.parse
+          from botocore.auth import SigV4Auth
+          from botocore.awsrequest import AWSRequest
+          import logging
+          import os
+          from typing import List, Dict, Optional
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              """
+              Lambda function to generate text embeddings using Amazon Bedrock
+              and post them to OpenSearch for testing
+              """
+              try:
+                  # Test sentence if none provided
+                  test_text = "This is a test sentence about Southeast Asian policy and maritime security in the South China Sea."
+                  
+                  # Extract parameters from event
+                  text = event.get('text', test_text)
+                  model_id = event.get('model_id', 'amazon.titan-embed-text-v1')
+                  index_name = event.get('index', 'policy-articles')
+                  
+                  # Generate embedding
+                  bedrock = boto3.client('bedrock-runtime')
+                  
+                  # Prepare the request for Titan model
+                  body = json.dumps({"inputText": text})
+                  
+                  # Call Bedrock
+                  response = bedrock.invoke_model(
+                      body=body,
+                      modelId=model_id,
+                      accept='application/json',
+                      contentType='application/json'
+                  )
+                  
+                  # Parse response
+                  response_body = json.loads(response.get('body').read())
+                  embedding = response_body.get('embedding')
+                  
+                  if not embedding:
+                      return {
+                          'statusCode': 400,
+                          'body': json.dumps({'error': 'Failed to generate embedding'})
+                      }
+                  
+                  # Post to OpenSearch
+                  opensearch_result = post_to_opensearch(text, embedding, index_name)
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Successfully generated embedding and posted to OpenSearch',
+                          'text': text,
+                          'embedding_dimension': len(embedding),
+                          'model_id': model_id,
+                          'opensearch_result': opensearch_result
+                      })
+                  }
+                  
+              except Exception as e:
+                  error_msg = str(e)
+                  logger.error(f"Error: {error_msg}")
+                  
+                  # Check for common Bedrock access issues
+                  if "AccessDeniedException" in error_msg and "model" in error_msg.lower():
+                      error_response = {
+                          'error': 'Bedrock Model Access Denied',
+                          'message': 'You need to enable access to the Bedrock model in the AWS console.',
+                          'instructions': [
+                              '1. Go to the AWS Bedrock console',
+                              '2. Navigate to "Model access" in the left sidebar',
+                              '3. Click "Enable specific models"',
+                              '4. Find and enable "Titan Text Embeddings V1" (amazon.titan-embed-text-v1)',
+                              '5. Wait for the status to change to "Access granted"',
+                              '6. Try running the Lambda function again'
+                          ],
+                          'model_requested': model_id,
+                          'aws_console_url': 'https://console.aws.amazon.com/bedrock/home#/modelaccess',
+                          'original_error': error_msg
+                      }
+                      return {
+                          'statusCode': 403,
+                          'body': json.dumps(error_response, indent=2)
+                      }
+                  
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': error_msg})
+                  }
+
+          def post_to_opensearch(text, embedding, index_name):
+              """Post document with embedding to OpenSearch using urllib"""
+              try:
+                  endpoint = os.environ['OPENSEARCH_ENDPOINT']
+                  region = os.environ['AWS_REGION']
+                  
+                  logger.info(f"Connecting to OpenSearch endpoint: {endpoint}")
+                  logger.info(f"Region: {region}")
+                  logger.info(f"Index name: {index_name}")
+                  
+                  # Get AWS credentials
+                  session = boto3.Session()
+                  credentials = session.get_credentials()
+                  
+                  if not credentials:
+                      return {'error': 'Unable to get AWS credentials'}
+                  
+                  logger.info(f"Got credentials for access key: {credentials.access_key[:8]}...")
+                  
+                  # Create index if it doesn't exist
+                  index_mapping = {
+                      "mappings": {
+                          "properties": {
+                              "text": {"type": "text"},
+                              "embedding": {
+                                  "type": "dense_vector",
+                                  "dims": len(embedding),
+                                  "index": True,
+                                  "similarity": "cosine"
+                              },
+                              "timestamp": {"type": "date"}
+                          }
+                      }
+                  }
+                  
+                  # Try to create index (ignore if already exists)
+                  index_url = f"https://{endpoint}/{index_name}"
+                  logger.info(f"Attempting to create index at: {index_url}")
+                  
+                  try:
+                      create_response = make_signed_request('PUT', index_url, json.dumps(index_mapping), credentials, region)
+                      logger.info(f"Index creation successful: {create_response[:200]}...")
+                  except Exception as create_error:
+                      logger.info(f"Index creation failed (may already exist): {str(create_error)[:200]}...")
+                      # Continue - index might already exist
+                  
+                  # Post document with a specific document ID to make it idempotent
+                  document = {
+                      "text": text,
+                      "embedding": embedding,
+                      "timestamp": "2025-06-29T06:41:33Z"
+                  }
+                  
+                  # Use PUT with a specific ID instead of POST to make it idempotent
+                  import hashlib
+                  doc_id = hashlib.md5(text.encode()).hexdigest()[:16]
+                  doc_url = f"https://{endpoint}/{index_name}/_doc/{doc_id}"
+                  logger.info(f"Posting document to: {doc_url}")
+                  
+                  response = make_signed_request('PUT', doc_url, json.dumps(document), credentials, region)
+                  logger.info(f"Document post successful")
+                  
+                  return {
+                      'status_code': 200,
+                      'response': 'Document posted successfully',
+                      'document_id': doc_id,
+                      'opensearch_response': response[:200] if response else 'No response body'
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"OpenSearch error: {str(e)}")
+                  return {
+                      'error': str(e),
+                      'endpoint': os.environ.get('OPENSEARCH_ENDPOINT', 'Not set'),
+                      'region': os.environ.get('AWS_REGION', 'Not set')
+                  }
+
+          def make_signed_request(method, url, data, credentials, region):
+              """Make a signed request to OpenSearch using urllib with proper AWS SigV4 signing"""
+              try:
+                  logger.info(f"Making {method} request to {url}")
+                  logger.info(f"Request data length: {len(data)}")
+                  
+                  # Parse URL to get components
+                  from urllib.parse import urlparse
+                  parsed_url = urlparse(url)
+                  host = parsed_url.netloc
+                  path = parsed_url.path
+                  
+                  logger.info(f"Host: {host}, Path: {path}")
+                  
+                  # Create AWS request with proper URL components
+                  request = AWSRequest(method=method, url=url, data=data.encode('utf-8'))
+                  
+                  # Set required headers
+                  request.headers['Content-Type'] = 'application/json'
+                  request.headers['Host'] = host
+                  
+                  # Sign the request with the correct service name
+                  SigV4Auth(credentials, 'es', region).add_auth(request)
+                  
+                  logger.info(f"Final request URL: {request.url}")
+                  logger.info(f"Request headers after signing: {dict(request.headers)}")
+                  
+                  # Make the request using urllib
+                  req = urllib.request.Request(
+                      url=request.url,
+                      data=request.body,
+                      headers=dict(request.headers),
+                      method=method
+                  )
+                  
+                  with urllib.request.urlopen(req) as response:
+                      response_text = response.read().decode('utf-8')
+                      logger.info(f"Response status: {response.status}")
+                      logger.info(f"Response body: {response_text[:500]}...")  # Log first 500 chars
+                      return response_text
+                      
+              except urllib.error.HTTPError as http_error:
+                  try:
+                      error_body = http_error.read().decode('utf-8')
+                  except:
+                      error_body = 'Unable to read error body'
+                  logger.error(f"HTTP Error {http_error.code}: {http_error.reason}")
+                  logger.error(f"Error body: {error_body}")
+                  raise Exception(f"HTTP Error {http_error.code}: {http_error.reason}. Body: {error_body}")
+              except Exception as e:
+                  logger.error(f"Request error: {str(e)}")
+                  raise
+
+  # OpenSearch Domain (using Elasticsearch resource type for compatibility)
+  OpenSearchDomain:
+    Type: AWS::Elasticsearch::Domain
+    Properties:
+      DomainName: !Sub '${EnvironmentName}-es'
+      ElasticsearchVersion: '7.10'
+      ElasticsearchClusterConfig:
+        InstanceType: !Ref OpenSearchInstanceType
+        InstanceCount: 1
+        DedicatedMasterEnabled: false
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: gp3
+        VolumeSize: 10
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt BedrockLambdaRole.Arn
+            Action: 'es:*'
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${EnvironmentName}-es/*'
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'es:*'
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${EnvironmentName}-es/*'
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      EncryptionAtRestOptions:
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-opensearch'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  OpenSearchDomainEndpoint:
+    Description: "OpenSearch domain endpoint"
+    Value: !GetAtt OpenSearchDomain.DomainEndpoint
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchEndpoint'
+
+  OpenSearchDashboardURL:
+    Description: "OpenSearch Dashboards URL"
+    Value: !Sub 'https://${OpenSearchDomain.DomainEndpoint}/_dashboards/'
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchDashboardURL'
+
+  OpenSearchDomainArn:
+    Description: "OpenSearch domain ARN"
+    Value: !GetAtt OpenSearchDomain.DomainArn
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchDomainArn'
+
+  BedrockEmbeddingsFunction:
+    Description: "Lambda function for generating embeddings with Bedrock"
+    Value: !Ref BedrockEmbeddingsFunction
+    Export:
+      Name: !Sub '${EnvironmentName}-BedrockEmbeddingsFunction'
+
+  BedrockEmbeddingsFunctionArn:
+    Description: "ARN of the Bedrock embeddings Lambda function"
+    Value: !GetAtt BedrockEmbeddingsFunction.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-BedrockEmbeddingsFunctionArn'

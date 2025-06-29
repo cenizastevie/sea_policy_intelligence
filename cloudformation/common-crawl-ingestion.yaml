@@ -19,6 +19,16 @@ Resources:
     DeletionPolicy: Retain
     Properties:
       BucketName: sea-articles-jsonl
+  ArticlesCSVBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: sea-articles-csv
+  ArticlesVectorBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: sea-articles-vector
 Outputs:
   SeaNewsArticlesBucket:
     Description: "The name of the bucket for storing news articles"
@@ -45,3 +55,13 @@ Outputs:
     Value: !Ref ArticlesJsonLBucket
     Export:
       Name: ArticlesJsonLBucket
+  ArticlesCSVBucket:
+    Description: "The name of the bucket for storing articles in CSV format"
+    Value: !Ref ArticlesCSVBucket
+    Export:
+      Name: ArticlesCSVBucket
+  ArticlesVectorBucket:
+    Description: "The name of the bucket for storing articles in vector format"
+    Value: !Ref ArticlesVectorBucket
+    Export:
+      Name: ArticlesVectorBucket
