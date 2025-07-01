@@ -11,6 +11,10 @@ INDEX_NAME = 'policy-articles'
 EMBEDDING_DIM = 1536  # Change this if your embedding size is different
 
 mapping = {
+    "settings": {
+        "index.knn": True,
+        "index.knn.algo_param.ef_search": 100
+    },
     "mappings": {
         "properties": {
             "embedding": {
